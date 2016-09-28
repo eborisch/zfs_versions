@@ -8,21 +8,28 @@ from __future__ import print_function
 import re
 import sys
 
-from operator import itemgetter
 from os import path
-from subprocess import check_output, call
+from subprocess import check_output, call, check_call, STDOUT
 
 if sys.platform[:5] == 'linux':
-    LS_CMD = 'ls -ltr --time-style=full-iso'
+    LS = 'ls -ltr --time-style=full-iso'
 else:
-    LS_CMD = 'ls -Tltr'
+    LS = 'ls -Tltr'
+
+# If we have colordiff, use it for diff commands
+try:
+    check_call(('colordiff', '-v'), stdin=open('/dev/null', 'r'),
+               stdout=open('/dev/null', 'w'), stderr=STDOUT)
+    DIFF = 'colordiff'
+except OSError as e:
+    DIFF = 'diff'
 
 
-def find_versions(path_in, print_all=False):
+def find_versions(path_in, print_mode=False):
     """
     Locate all zfs-snapshotted versions of path_in. Listed in time-order, with
-    only updated versions listed (with the exception of the current file, which
-    is always listed.)
+    only updated versions listed (with the exception of the current file,
+    which is always listed.)
     """
     ls_opts = '-d' if path.isdir(path_in) else ''
     orig = path.abspath(path_in).split('/')
@@ -42,7 +49,7 @@ def find_versions(path_in, print_all=False):
 
     branch = '/'.join(orig[zfs_point:])
 
-    output = check_output('{0} {1} "{2}"/snapshot/*/"{3}"'.format(LS_CMD,
+    output = check_output('{0} {1} "{2}"/snapshot/*/"{3}"'.format(LS,
                                                                   ls_opts,
                                                                   zfs_dir,
                                                                   branch),
@@ -51,7 +58,7 @@ def find_versions(path_in, print_all=False):
 
     files = []
 
-    if print_all:
+    if print_mode is True:
         sortable = re.compile('(.*zfs-auto-snap)_[a-z]+-([0-9h-]+)')
         sort_lines = []
         sort_last = None
@@ -59,14 +66,15 @@ def find_versions(path_in, print_all=False):
             if len(line) == 0:
                 continue
             # This is to attempts to sort auto-snapshot names of identical
-            # versions chronologically. Won't work for custom snapshot names as
-            # we don't have direct access to their (snapshot) creation times.
+            # versions chronologically. Won't work for custom snapshot names
+            # as we don't have direct access to their (snapshot) creation
+            # times.
             files.append(line[line.find('/'):])
             found = sortable.search(line)
             if found:
                 if found.group(1) != sort_last:
                     for l in sorted(sort_lines):
-                        print( l[1])
+                        print(l[1])
                     sort_lines[:] = []
                     sort_last = found.group(1)
                 sort_lines.append((found.group(2), line))
@@ -84,37 +92,42 @@ def find_versions(path_in, print_all=False):
             this = line[:line.find('/')]
             if this != last:
                 files.append(line[line.find('/'):])
-                print(line)
+                if print_mode is not None:
+                    print(line)
                 last = this
 
     # List the current (live on the filesystem) version.
     if path.exists('/'.join(orig)):
         # Don't call if the user is searching for a deleted file.
-        call('{0} {1} "{2}"'.format(LS_CMD, ls_opts, '/'.join(orig)),
-             shell=True)
+        if print_mode is not None:
+            call('{0} {1} "{2}"'.format(LS, ls_opts, '/'.join(orig)),
+                 shell=True)
         files.append('/'.join(orig))
     return files
+
 
 def usage():
     print("Usage: zfs_versions.py [-a|--all] [--diff|--idiff] \n"
           "                       <path> [<path> ...]\n"
           "  -a|--all   Print all versions (not just changed.)\n"
-          "  --diff     Show difference between current and history.\n"
+          "  --diff     Show difference between history and current.\n"
           "  --idiff    Show incremental differences.")
 
 
 if __name__ == "__main__":
-    filt = False
+    print_all = False
     diff = 0
 
     # Poor man's argparse to enable 2.6 compat.
     while len(sys.argv) > 1 and sys.argv[1][0] is '-':
         if sys.argv[1] in ('-a', '--all'):
-            filt = True
+            print_all = True
         elif sys.argv[1] == '--diff':
             diff = 1
+            print_all = None
         elif sys.argv[1] == '--idiff':
             diff = 2
+            print_all = None
         else:
             usage()
             print("")
@@ -129,18 +142,18 @@ if __name__ == "__main__":
     sep = False
     for p in sys.argv[1:]:
         if sep:
-            print("==")
-        vers = find_versions(p, filt)
+            print("*" * 78)
+        vers = find_versions(p, print_all)
         if diff == 1:
             for n in vers[:-1]:
                 print("-"*78)
-                call(('diff', '-su', n, vers[-1]))
+                sys.stdout.flush()
+                call((DIFF, '-su', n, vers[-1]))
         elif diff == 2:
             for n in range(len(vers)-1):
                 print("-"*78)
-                call(('diff', '-su', vers[n], vers[n+1]))
-
-
+                sys.stdout.flush()
+                call((DIFF, '-su', vers[n], vers[n+1]))
         sep = True
 
 # vim: ts=4:sw=4:et:si:ai:
