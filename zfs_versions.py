@@ -111,12 +111,14 @@ def usage():
           "                       <path> [<path> ...]\n"
           "  -a|--all   Print all versions (not just changed.)\n"
           "  --diff     Show difference between history and current.\n"
-          "  --idiff    Show incremental differences.")
+          "  --idiff    Show incremental differences.\n"
+          "  -r|--recursive  Recursive diffs on directories.")
 
 
 if __name__ == "__main__":
     print_all = False
     diff = 0
+    FLAGS = '-u'
 
     # Poor man's argparse to enable 2.6 compat.
     while len(sys.argv) > 1 and sys.argv[1][0] is '-':
@@ -128,6 +130,8 @@ if __name__ == "__main__":
         elif sys.argv[1] == '--idiff':
             diff = 2
             print_all = None
+        elif sys.argv[1] in ('-r', '--recursive'):
+            FLAGS = FLAGS + 'r'
         else:
             usage()
             print("")
@@ -144,16 +148,22 @@ if __name__ == "__main__":
         if sep:
             print("*" * 78)
         vers = find_versions(p, print_all)
+        if path.isdir(vers[-1]):
+            # Don't echo back all the unchanged files.
+            f = FLAGS
+        else:
+            f = FLAGS + 's'
+
         if diff == 1:
             for n in vers[:-1]:
                 print("-"*78)
                 sys.stdout.flush()
-                call((DIFF, '-su', n, vers[-1]))
+                call((DIFF, f, n, vers[-1]))
         elif diff == 2:
             for n in range(len(vers)-1):
                 print("-"*78)
                 sys.stdout.flush()
-                call((DIFF, '-su', vers[n], vers[n+1]))
+                call((DIFF, f, vers[n], vers[n+1]))
         sep = True
 
 # vim: ts=4:sw=4:et:si:ai:
