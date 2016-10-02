@@ -13,6 +13,8 @@ from subprocess import check_output, call, check_call, STDOUT
 
 if sys.platform[:5] == 'linux':
     LS = 'ls -ltr --time-style=full-iso'
+elif sys.platform == 'sunos5':
+    LS = '/usr/bin/ls -ltrE'
 else:
     LS = 'ls -Tltr'
 
