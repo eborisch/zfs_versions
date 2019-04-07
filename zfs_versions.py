@@ -9,7 +9,8 @@ import re
 import sys
 
 from os import path
-from subprocess import check_output, call, check_call, STDOUT
+from subprocess import check_output, call, check_call, STDOUT, \
+                       CalledProcessError
 
 if sys.platform[:5] == 'linux':
     LS = 'ls -ltr --time-style=full-iso'
@@ -20,7 +21,7 @@ else:
 
 # If we have colordiff, use it for diff commands
 try:
-    check_call(('colordiff', '-v'), stdin=open('/dev/null', 'r'),
+    check_call(('colordiff', '/dev/null', '/dev/null'), stdin=open('/dev/null', 'r'),
                stdout=open('/dev/null', 'w'), stderr=STDOUT)
     DIFF = 'colordiff'
 except OSError as e:
@@ -51,12 +52,16 @@ def find_versions(path_in, print_mode=False):
 
     branch = '/'.join(orig[zfs_point:])
 
-    output = check_output('{0} {1} "{2}"/snapshot/*/"{3}"'.format(LS,
-                                                                  ls_opts,
-                                                                  zfs_dir,
-                                                                  branch),
-                          shell=True,
-                          universal_newlines=True).split('\n')
+    try:
+        output = check_output('{0} {1} "{2}"/snapshot/*/"{3}"'.format(LS,
+                                                                      ls_opts,
+                                                                      zfs_dir,
+                                                                      branch),
+                              shell=True,
+                              universal_newlines=True).split('\n')
+    except CalledProcessError:
+        print("Unable to find previous versions of [{0}]".format(path_in))
+        output = []
 
     files = []
 
